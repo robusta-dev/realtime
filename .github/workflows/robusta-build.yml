@@ -1,0 +1,111 @@
+name: Robusta — Build realtime fork image
+
+# Two ways to trigger:
+#   1. Manual via "Run workflow" in the Actions tab (pick branch + supply image_tag).
+#   2. Push to a branch matching robusta-build/** — tag is derived from the branch suffix.
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Image tag to publish (e.g. v2.96.0-robusta.1)'
+        required: true
+        default: 'v2.96.0-robusta.1'
+      push_dockerhub:
+        description: 'Also push to robustadev/realtime on Docker Hub'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['true', 'false']
+  push:
+    branches:
+      - 'robusta-build/**'
+
+# Cancel in-progress runs for the same ref
+concurrency:
+  group: realtime-fork-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: 'read'
+      id-token: 'write'   # required for GCP workload identity federation
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve image tag
+        id: tag
+        run: |
+          if [ -n "${{ github.event.inputs.image_tag }}" ]; then
+            TAG='${{ github.event.inputs.image_tag }}'
+          else
+            BRANCH="${GITHUB_REF#refs/heads/}"
+            TAG="${BRANCH#robusta-build/}"
+            [ -z "$TAG" ] && TAG="v2.96.0-robusta.dev"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Resolved image tag: $TAG"
+
+      - uses: 'google-github-actions/auth@v2'
+        with:
+          project_id: 'genuine-flight-317411'
+          workload_identity_provider: 'projects/429189597230/locations/global/workloadIdentityPools/github/providers/robusta-repos'
+
+      - name: Set up gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: genuine-flight-317411
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+
+      - name: Login to Docker Hub
+        if: github.event.inputs.push_dockerhub == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push (GCP Artifact Registry)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            us-central1-docker.pkg.dev/genuine-flight-317411/devel/realtime:${{ steps.tag.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push (Docker Hub, opt-in)
+        if: github.event.inputs.push_dockerhub == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            robustadev/realtime:${{ steps.tag.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Summary
+        run: |
+          {
+            echo "### Built image"
+            echo ''
+            echo '```'
+            echo "us-central1-docker.pkg.dev/genuine-flight-317411/devel/realtime:${{ steps.tag.outputs.tag }}"
+            if [ "${{ github.event.inputs.push_dockerhub }}" = "true" ]; then
+              echo "robustadev/realtime:${{ steps.tag.outputs.tag }}"
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

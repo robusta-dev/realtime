@@ -11,11 +11,28 @@ defmodule RealtimeWeb.JwtVerification do
 
     @impl true
     def token_config do
-      Application.fetch_env!(:realtime, :jwt_claim_validators)
-      |> Enum.reduce(%{}, fn {claim_key, expected_val}, claims ->
-        add_claim_validator(claims, claim_key, expected_val)
-      end)
-      |> add_claim_validator("exp")
+      token_config(include_exp: true)
+    end
+
+    # Robusta-specific opt-out: when `include_exp` is false, the `exp` validator
+    # is omitted so a token missing `exp` can still pass validation. Joken
+    # silently skips validators for claims not present in the token, so when
+    # `exp` is present it will still be validated regardless of this flag.
+    # (We pass true unconditionally in production, but JwtVerification.verify/3
+    # may build a custom config without `exp` when the env var disables it AND
+    # the incoming token has no `exp` claim.)
+    def token_config(opts) do
+      base =
+        Application.fetch_env!(:realtime, :jwt_claim_validators)
+        |> Enum.reduce(%{}, fn {claim_key, expected_val}, claims ->
+          add_claim_validator(claims, claim_key, expected_val)
+        end)
+
+      if Keyword.get(opts, :include_exp, true) do
+        add_claim_validator(base, "exp")
+      else
+        base
+      end
     end
 
     defp add_claim_validator(claims, "exp") do
@@ -38,10 +55,17 @@ defmodule RealtimeWeb.JwtVerification do
   """
   @spec verify(binary(), binary(), binary() | nil) :: {:ok, map()} | {:error, any()}
   def verify(token, jwt_secret, jwt_jwks) when is_binary(token) do
-    with {:ok, _claims} <- check_claims_format(token),
+    with {:ok, claims} <- check_claims_format(token),
          {:ok, header} <- check_header_format(token),
          {:ok, signer} <- generate_signer(header, jwt_secret, jwt_jwks) do
-      JwtAuthToken.verify_and_validate(token, signer)
+      # Robusta-specific opt-out: when JWT_REQUIRE_EXP=false AND the token has
+      # no `exp` claim, build a token_config that omits the `exp` validator.
+      # In all other cases (flag on, or exp present) behaviour matches upstream.
+      include_exp =
+        Application.get_env(:realtime, :jwt_require_exp, true) or Map.has_key?(claims, "exp")
+
+      token_config = JwtAuthToken.token_config(include_exp: include_exp)
+      Joken.verify_and_validate(token_config, token, signer)
     else
       {:error, _e} = error -> error
     end

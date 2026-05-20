@@ -18,7 +18,14 @@ defmodule RealtimeWeb.ChannelsAuthorization do
   def authorize_conn(token, jwt_secret, jwt_jwks) do
     case authorize(token, jwt_secret, jwt_jwks) do
       {:ok, claims} ->
-        required = ["role", "exp"]
+        # Robusta-specific opt-out: when JWT_REQUIRE_EXP=false, do not require
+        # the `exp` claim. Present-but-expired tokens are still rejected upstream
+        # by JwtVerification.
+        required =
+          if Application.get_env(:realtime, :jwt_require_exp, true),
+            do: ["role", "exp"],
+            else: ["role"]
+
         claims_keys = Map.keys(claims)
 
         if Enum.all?(required, &(&1 in claims_keys)),
