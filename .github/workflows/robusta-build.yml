@@ -27,7 +27,20 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+            platform: linux/amd64
+            tag_suffix: ''
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            platform: linux/arm64
+            tag_suffix: '-arm64'
 
     permissions:
       contents: 'read'
@@ -77,12 +90,12 @@ jobs:
         with:
           context: .
           file: Dockerfile
-          platforms: linux/amd64
+          platforms: ${{ matrix.platform }}
           push: true
           tags: |
-            us-central1-docker.pkg.dev/genuine-flight-317411/devel/realtime:${{ steps.tag.outputs.tag }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+            us-central1-docker.pkg.dev/genuine-flight-317411/devel/realtime:${{ steps.tag.outputs.tag }}${{ matrix.tag_suffix }}
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
 
       - name: Build and push (Docker Hub, opt-in)
         if: github.event.inputs.push_dockerhub == 'true'
@@ -90,22 +103,22 @@ jobs:
         with:
           context: .
           file: Dockerfile
-          platforms: linux/amd64
+          platforms: ${{ matrix.platform }}
           push: true
           tags: |
-            robustadev/realtime:${{ steps.tag.outputs.tag }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+            robustadev/realtime:${{ steps.tag.outputs.tag }}${{ matrix.tag_suffix }}
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
 
       - name: Summary
         run: |
           {
-            echo "### Built image"
+            echo "### Built image (${{ matrix.arch }})"
             echo ''
             echo '```'
-            echo "us-central1-docker.pkg.dev/genuine-flight-317411/devel/realtime:${{ steps.tag.outputs.tag }}"
+            echo "us-central1-docker.pkg.dev/genuine-flight-317411/devel/realtime:${{ steps.tag.outputs.tag }}${{ matrix.tag_suffix }}"
             if [ "${{ github.event.inputs.push_dockerhub }}" = "true" ]; then
-              echo "robustadev/realtime:${{ steps.tag.outputs.tag }}"
+              echo "robustadev/realtime:${{ steps.tag.outputs.tag }}${{ matrix.tag_suffix }}"
             fi
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
