@@ -94,12 +94,25 @@ if [[ -n "${GENERATE_CLUSTER_CERTS:-}" ]] ; then
     generate_certs
 fi
 
+# Robusta fork: drop to `nobody` via sudo only when the container starts
+# as root. On platforms that already force a non-root UID (notably OpenShift
+# under the restricted-v2 SCC, where no_new_privs blocks sudo entirely),
+# invoke the binary directly — we're already non-root, there's nothing
+# to drop to.
+run_as_nobody() {
+    if [ "$(id -u)" -eq 0 ]; then
+        sudo -E -u nobody "$@"
+    else
+        "$@"
+    fi
+}
+
 echo "Running migrations"
-sudo -E -u nobody /app/bin/migrate
+run_as_nobody /app/bin/migrate
 
 if [ "${SEED_SELF_HOST-}" = true ]; then
     echo "Seeding selfhosted Realtime"
-    sudo -E -u nobody /app/bin/realtime eval 'Realtime.Release.seeds(Realtime.Repo)'
+    run_as_nobody /app/bin/realtime eval 'Realtime.Release.seeds(Realtime.Repo)'
 fi
 
 echo "Starting Realtime"

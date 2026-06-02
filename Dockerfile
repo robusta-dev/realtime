@@ -94,10 +94,15 @@ RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
 
 WORKDIR "/app"
 
-RUN chown nobody /app && mkdir -p /app/.pgdelta-cache && chown nobody /app/.pgdelta-cache
+RUN chown nobody:root /app && chmod g=u /app && \
+    mkdir -p /app/.pgdelta-cache && chown nobody:root /app/.pgdelta-cache && chmod g=u /app/.pgdelta-cache
 
 COPY --from=builder --chown=nobody:root /app/_build/${MIX_ENV}/rel/realtime ./
 COPY run.sh run.sh
+# Robusta fork: make everything under /app group-accessible so OpenShift's
+# arbitrary-UID model (random UID + supplemental gid 0) can read/execute
+# the release and write to pgdelta-cache.
+RUN chgrp -R 0 /app && chmod -R g=u /app
 RUN ls -la /app
 ENTRYPOINT ["/usr/bin/tini", "-s", "-g", "--", "/app/run.sh"]
 CMD ["/app/bin/server"]
