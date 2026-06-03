@@ -54,6 +54,10 @@ janitor_run_after_in_ms = Env.get_integer("JANITOR_RUN_AFTER_IN_MS", :timer.minu
 janitor_schedule_randomize = Env.get_boolean("JANITOR_SCHEDULE_RANDOMIZE", true)
 janitor_schedule_timer_in_ms = Env.get_integer("JANITOR_SCHEDULE_TIMER_IN_MS", :timer.hours(4))
 jwt_claim_validators = System.get_env("JWT_CLAIM_VALIDATORS", "{}")
+# Robusta-specific opt-out: when set to "false", a missing `exp` claim is
+# accepted. Present-but-expired tokens are still rejected. Default matches
+# upstream (true = exp required).
+jwt_require_exp = Env.get_boolean("JWT_REQUIRE_EXP", true)
 log_level = System.get_env("LOG_LEVEL", "info") |> String.to_existing_atom()
 log_throttle_janitor_interval_in_ms = Env.get_integer("LOG_THROTTLE_JANITOR_INTERVAL_IN_MS", :timer.minutes(10))
 logflare_logger_backend_url = System.get_env("LOGFLARE_LOGGER_BACKEND_URL", "https://api.logflare.app")
@@ -219,7 +223,9 @@ config :realtime,
   metrics_pusher_interval_ms: metrics_pusher_interval_ms,
   metrics_pusher_timeout_ms: metrics_pusher_timeout_ms,
   metrics_pusher_compress: metrics_pusher_compress,
-  metrics_pusher_extra_labels: metrics_pusher_extra_labels
+  metrics_pusher_extra_labels: metrics_pusher_extra_labels,
+  # Robusta-specific opt-out for the JWT `exp` claim requirement.
+  jwt_require_exp: jwt_require_exp
 
 if config_env() != :test && run_janitor do
   config :realtime,
