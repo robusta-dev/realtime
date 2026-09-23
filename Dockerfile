@@ -79,7 +79,10 @@ ENV SLOT_NAME_SUFFIX="${SLOT_NAME_SUFFIX}" \
     ECTO_IPV6="true" \
     ERL_AFLAGS="-proto_dist inet6_tcp"
 
+# Robusta: upgrade base packages so security fixes published after the
+# pinned debian snapshot are included (e.g. gnutls, openssl, python3.11).
 RUN apt-get update -y && \
+    apt-get upgrade -y --no-install-recommends && \
     apt-get install -y --no-install-recommends \
       libstdc++6 openssl libncurses5 locales iptables sudo tini curl awscli jq xz-utils && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
