@@ -1,5 +1,6 @@
 ARG ELIXIR_VERSION=1.18
 ARG OTP_VERSION=27.3
+# Robusta: builder only; runner uses trixie for CVE fixes.
 ARG DEBIAN_VERSION=bookworm-20250929-slim
 ARG BUILDER_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
 ARG RUNNER_IMAGE="debian:trixie-slim"
