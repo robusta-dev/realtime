@@ -84,7 +84,7 @@ ENV SLOT_NAME_SUFFIX="${SLOT_NAME_SUFFIX}" \
 RUN apt-get update -y && \
     apt-get upgrade -y --no-install-recommends && \
     apt-get install -y --no-install-recommends \
-      libstdc++6 openssl libncurses5 locales iptables sudo tini curl jq xz-utils && \
+      libstdc++6 openssl libncurses5 locales iptables sudo tini curl awscli jq xz-utils && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Robusta: pgdelta artifacts copied from the upstream realtime image.
