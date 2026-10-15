@@ -2,7 +2,7 @@ ARG ELIXIR_VERSION=1.18
 ARG OTP_VERSION=27.3
 ARG DEBIAN_VERSION=bookworm-20250929-slim
 ARG BUILDER_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
-ARG RUNNER_IMAGE="debian:${DEBIAN_VERSION}"
+ARG RUNNER_IMAGE="debian:trixie-slim"
 
 # Robusta: reuse the prebuilt pgdelta + libpg-query artifacts from the
 # upstream supabase/realtime image instead of running the heavy
@@ -84,7 +84,21 @@ ENV SLOT_NAME_SUFFIX="${SLOT_NAME_SUFFIX}" \
 RUN apt-get update -y && \
     apt-get upgrade -y --no-install-recommends && \
     apt-get install -y --no-install-recommends \
-      libstdc++6 openssl libncurses5 locales iptables sudo tini curl awscli jq xz-utils && \
+      libstdc++6 openssl locales iptables sudo tini curl awscli jq xz-utils && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Robusta: pull CVE fixes trixie lacks from forky, pinned per package.
+RUN FORKY_PKGS="libc6 libc-bin libc-l10n libc-gconv-modules-extra libcrypt1 locales \
+      libncursesw6 libtinfo6 ncurses-base ncurses-bin perl-base libsystemd0 libudev1 \
+      util-linux bsdutils mount login libblkid1 libmount1 libsmartcols1 liblastlog2-2 libuuid1 \
+      libexpat1 python3.13 python3.13-minimal libpython3.13-minimal libpython3.13-stdlib \
+      python3-cryptography python3-urllib3 python3-pyasn1 libsqlite3-0 zlib1g libacl1 libattr1 \
+      curl libcurl4t64 libnghttp2-14 libnghttp3-9 libngtcp2-16 libngtcp2-crypto-ossl0 libp11-kit0 sudo" && \
+    echo 'deb http://deb.debian.org/debian forky main' > /etc/apt/sources.list.d/forky.list && \
+    printf "Package: $FORKY_PKGS\nPin: release n=forky\nPin-Priority: 990\n\nPackage: *\nPin: release n=forky\nPin-Priority: -1\n" > /etc/apt/preferences.d/99-forky && \
+    apt-get update -y && \
+    apt-get install -y --no-install-recommends $FORKY_PKGS && \
+    rm -f /etc/apt/sources.list.d/forky.list /etc/apt/preferences.d/99-forky && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Robusta: pgdelta artifacts copied from the upstream realtime image.
