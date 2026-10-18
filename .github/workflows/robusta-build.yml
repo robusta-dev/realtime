@@ -19,6 +19,8 @@ on:
   push:
     branches:
       - 'robusta-build/**'
+  release:
+    types: [published]
 
 # Cancel in-progress runs for the same ref
 concurrency:
@@ -27,7 +29,11 @@ concurrency:
 
 jobs:
   build:
+    if: github.event_name != 'release' || contains(github.ref_name, 'robusta')
     runs-on: ${{ matrix.runner }}
+
+    env:
+      PUSH_DOCKERHUB: ${{ github.event_name == 'release' || github.event.inputs.push_dockerhub == 'true' }}
 
     strategy:
       fail-fast: false
@@ -54,6 +60,8 @@ jobs:
         run: |
           if [ -n "${{ github.event.inputs.image_tag }}" ]; then
             TAG='${{ github.event.inputs.image_tag }}'
+          elif [ "${{ github.event_name }}" = "release" ]; then
+            TAG='${{ github.ref_name }}'
           else
             BRANCH="${GITHUB_REF#refs/heads/}"
             TAG="${BRANCH#robusta-build/}"
@@ -76,7 +84,7 @@ jobs:
         run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
 
       - name: Login to Docker Hub
-        if: github.event.inputs.push_dockerhub == 'true'
+        if: env.PUSH_DOCKERHUB == 'true'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
@@ -98,7 +106,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
 
       - name: Build and push (Docker Hub, opt-in)
-        if: github.event.inputs.push_dockerhub == 'true'
+        if: env.PUSH_DOCKERHUB == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -117,7 +125,7 @@ jobs:
             echo ''
             echo '```'
             echo "us-central1-docker.pkg.dev/genuine-flight-317411/devel/realtime:${{ steps.tag.outputs.tag }}${{ matrix.tag_suffix }}"
-            if [ "${{ github.event.inputs.push_dockerhub }}" = "true" ]; then
+            if [ "$PUSH_DOCKERHUB" = "true" ]; then
               echo "robustadev/realtime:${{ steps.tag.outputs.tag }}${{ matrix.tag_suffix }}"
             fi
             echo '```'
