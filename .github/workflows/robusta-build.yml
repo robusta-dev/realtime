@@ -32,6 +32,9 @@ jobs:
     if: github.event_name != 'release' || contains(github.ref_name, 'robusta')
     runs-on: ${{ matrix.runner }}
 
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+
     env:
       PUSH_DOCKERHUB: ${{ github.event_name == 'release' || github.event.inputs.push_dockerhub == 'true' }}
 
@@ -42,7 +45,7 @@ jobs:
           - arch: amd64
             runner: ubuntu-latest
             platform: linux/amd64
-            tag_suffix: ''
+            tag_suffix: '-amd64'
           - arch: arm64
             runner: ubuntu-24.04-arm
             platform: linux/arm64
@@ -130,3 +133,45 @@ jobs:
             fi
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  manifest:
+    needs: build
+    runs-on: ubuntu-latest
+
+    env:
+      PUSH_DOCKERHUB: ${{ github.event_name == 'release' || github.event.inputs.push_dockerhub == 'true' }}
+      TAG: ${{ needs.build.outputs.tag }}
+
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
+    steps:
+      - uses: 'google-github-actions/auth@v2'
+        with:
+          project_id: 'genuine-flight-317411'
+          workload_identity_provider: 'projects/429189597230/locations/global/workloadIdentityPools/github/providers/robusta-repos'
+
+      - name: Set up gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: genuine-flight-317411
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+
+      - name: Login to Docker Hub
+        if: env.PUSH_DOCKERHUB == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Create multi-arch manifests
+        run: |
+          IMAGES="us-central1-docker.pkg.dev/genuine-flight-317411/devel/realtime"
+          [ "$PUSH_DOCKERHUB" = "true" ] && IMAGES="$IMAGES robustadev/realtime"
+          for IMAGE in $IMAGES; do
+            docker buildx imagetools create -t "$IMAGE:$TAG" "$IMAGE:$TAG-amd64" "$IMAGE:$TAG-arm64"
+            echo "$IMAGE:$TAG" >> "$GITHUB_STEP_SUMMARY"
+          done
